@@ -1,0 +1,128 @@
+tags:
+  java-xls-to-csv:
+    tags: [java]
+    main-class: cvx.cdf.base.pulse.XlsxToCsv
+    args: [$source,$destination,$sheet,${nameNode}]
+
+xls_to_csv_action:
+  - action: ${j_xls_to_csv_action.value}
+    tags: [java-xls-to-csv]
+
+hive_action: ->
+  - action: ${hive_action.value}
+    tags: [hive]
+
+shell_action: ->
+  - action: ${shell_action.value}
+    tags: [shell]
+
+context:
+  hive:
+    params:
+      - RAW_DATABASE_NAME=${hiveRawDatabaseName}
+
+workflow:
+   tags: [fork]
+
+  - action:
+      action.attr.name:  fetch-di-completions
+      java:
+        prepare:
+          delete: ${dicompletionsLocation}
+          mkdir: ${dicompletionsLocation}
+        configuration:
+          property:
+            name: oozie.launcher.mapreduce.map.memory.mb
+            value: 1120
+        main-class: cvx.cdf.base.pulse.XlsxToCsv
+        java-opts: -Xms1g -Xmx1g
+        arg: ${sourceDir}/Completions/DI Completions.xlsx
+        arg: ${dicompletionsLocation}/di-completions-1.csv
+        arg: Sheet1
+        arg: ${nameNode}
+      ok: create-tbl-di-completions
+      error: report-failure
+        next:
+          - action: create-tbl-di-completions
+            tags: [hive]
+            script: create-table-di-completions.hql
+            params: [RAW_DATABASE_NAME=${some_another_db}, TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+
+  - action: fetch-fracfocus-completions
+    tags: [java-xls-to-csv]
+    prepare.clean-up: ${fracfocusCompletionsLocation}
+    configuration.property: {name: oozie.launcher.mapreduce.map.memory.mb, value: 1120}
+    source: ${sourceDir}/Completions/Frac Focus Attributes with API14 6-21.xlsx
+    destination: ${fracfocusCompletionsLocation}/fracfocus-completions-1.csv
+    sheet: Sheet2
+    next:
+      - hive_action: create-tbl-fracfocus-completions
+        script: create-table-di-completions.hql
+        params: [TABLE_SOURCE_LOCATION=${fracfocusCompletionsLocation}]
+
+  - shell_action: fetch-mcbu-completions
+    prepare.clean-up: ${mcbuCompletionsLocation}
+    command: hdfs dfs -put ${completionsSourceDir}/mcbu_completions_data.csv ${mcbuCompletionsLocation}
+    next:
+      - hive_action: create-tbl-mcbu-completions
+        script: create-table-di-completions.hql
+        params: [TABLE_SOURCE_LOCATION=${mcbuCompletionsLocation}]
+
+  - shell_action: fetch-sme-completions
+    command: hdfs dfs -put ${completionsSourceDir}/sme_completions.csv ${smeCompletionsLocation}
+    prepare.clean-up: ${mcbuCompletionsLocation}
+    next:
+      - hive_action: create-tbl-sme-completions
+        script: create-table-sme-completions.hql
+        params: [RAW_DATABASE_NAME, TABLE_SOURCE_LOCATION=${smeCompletionsLocation}]
+
+   - xls_to_csv_action: fetch-ihsiptest-completions
+     tags: [parallel]
+     prepare.clean-up: ${ihsiptestCompletionsLocation}
+     configuration.property: {name: oozie.launcher.mapreduce.map.memory.mb, value: 65536}
+     java-opts: [-Xms63g, -Xmx63g]
+     sourceDir: ${sourceDir}/IHS Well Files
+     source: [Permian Well Data 6-11_1.xlsx, Permian Well Data 6-11_2.xlsx, Permian Well Data 6-11_3.xlsx]
+     destination: ${ihsiptestCompletionsLocation}/ihsiptest-completions-${i}.csv
+     sheet: Test1
+     next:
+       - action: create-tbl-ihsiptest-completions
+         engine: hive::create-table-ihsiptest-completions.hql
+         params: [RAW_DATABASE_NAME, TABLE_SOURCE_LOCATION=${ihsiptestCompletionsLocation}]
+
+   - action: fetch-treatment-summary
+     engine: java-xls-to-csv
+     method: single
+     prepare.clean-up: ${ihsCompletionsTreatmentSummaryLocation}
+     configuration.property: {name: oozie.launcher.mapreduce.map.memory.mb, value: 65536}
+     java-opts: -Xms63g -Xmx63g
+     sourceDir: ${sourceDir}/IHS Well Files
+     source: [Permian Well Data 6-11_1.xlsx, Permian Well Data 6-11_2.xlsx, Permian Well Data 6-11_3.xlsx]
+     destination: ${ihsiptestCompletionsLocation}/ihsiptest-completions-${i}.csv
+     sheet: Treatment Summary
+     next:
+       - action: create-tbl-treatment-summary
+         engine: hive::create-table-treatment-summary-ihscompletions.hql
+         params: [RAW_DATABASE_NAME, TABLE_SOURCE_LOCATION=${ihsCompletionsTreatmentSummaryLocation}]
+
+   - action: fetch-test-perforation
+     tags: [java-xls-to-csv, sequential]
+     prepare.clean-up: ${ihsCompletionsTestPerforationLocation}
+     configuration.property: {name: oozie.launcher.mapreduce.map.memory.mb, value: 65536}
+     java-opts: -Xms63g -Xmx63g
+     sourceDir: ${sourceDir}/IHS Well Files
+     source: [Permian Well Data 6-11_1.xlsx, Permian Well Data 6-11_2.xlsx, Permian Well Data 6-11_3.xlsx]
+     destination: ${ihsiptestCompletionsLocation}/test-perforation-${i}.csv
+     sheet: Test Perforation
+     next:
+       - action: create-tbl-test-perforation
+         engine: hive::create-table-test-perforation-ihscompletions.hql
+         params: [RAW_DATABASE_NAME, TABLE_SOURCE_LOCATION=${ihsCompletionsTestPerforationLocation}]
+
+  - action: fetch-ihs-completions
+    engine: shell::hdfs dfs -put ${completionsSourceDir}/ihs-completions.csv ${ihsCompletionsLocation}
+    prepare.clean-up: ${ihsCompletionsLocation}
+     next:
+       - action: create-tbl-ihs-completions
+         engine: hive::create-table-ihs-completions.hql
+         params: [RAW_DATABASE_NAME, TABLE_SOURCE_LOCATION=${ihsCompletionsLocation}]

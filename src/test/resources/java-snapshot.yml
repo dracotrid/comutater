@@ -1,0 +1,176 @@
+  workflow:
+
+  - action:
+      action.attr.name:  fetch-di-completions
+      java:
+        prepare:
+          delete: ${dicompletionsLocation}
+          mkdir: ${dicompletionsLocation}
+        configuration:
+          property:
+            name: oozie.launcher.mapreduce.map.memory.mb
+            value: 1120
+        main-class: cvx.cdf.base.pulse.XlsxToCsv
+        java-opts: -Xms1g -Xmx1g
+        arg: ${sourceDir}/Completions/DI Completions.xlsx
+        arg: ${dicompletionsLocation}/di-completions-1.csv
+        arg: Sheet1
+        arg: ${nameNode}
+      ok: create-tbl-di-completions
+      error: report-failure
+
+----------------------------------------------------------------------------------------------
+
+workflow:
+  - action: fetch-di-completions
+      java:
+        prepare.delete: ${dicompletionsLocation}
+        prepare.mkdir: ${dicompletionsLocation}
+        configuration.properties: [{name: oozie.launcher.mapreduce.map.memory.mb, value: 1120 }]
+        main-class: cvx.cdf.base.pulse.XlsxToCsv
+        java-opts: -Xms1g -Xmx1g
+        arg: ${sourceDir}/Completions/DI Completions.xlsx
+        arg: ${dicompletionsLocation}/di-completions-1.csv
+        arg: Sheet1
+        arg: ${nameNode}
+
+  - action: create-tbl-di-completions
+  OR
+    next:
+      - action: create-tbl-di-completions
+
+-------------------------------------------------------------------------------------------
+workflow:
+  - action: fetch-di-completions
+      java:
+        prepare.clean-up: ${dicompletionsLocation}
+        configuration.properties: [{name: oozie.launcher.mapreduce.map.memory.mb, value: 1120 }]
+        main-class: cvx.cdf.base.pulse.XlsxToCsv
+        java-opts: -Xms1g -Xmx1g
+        arg: ${sourceDir}/Completions/DI Completions.xlsx
+        arg: ${dicompletionsLocation}/di-completions-1.csv
+        arg: Sheet1
+        arg: ${nameNode}
+      next:
+        - action: create-tbl-di-completions
+
+-------------------------------------------------------------------------------------------
+tags:
+  java:
+    prepare.*: ->
+      *: $prepare.*.value
+    configuration.properties: ->
+      properties: $configuration.properties.value
+    args: ->
+      arg: args[{0..max(args)-1}]
+
+workflow:
+  - action: fetch-di-completions
+    tag: [java]
+    clean-up: ${dicompletionsLocation}
+    properties: [{name: oozie.launcher.mapreduce.map.memory.mb, value: 1120 }]
+    main-class: cvx.cdf.base.pulse.XlsxToCsv
+    java-opts: -Xms1g -Xmx1g
+    args: [${sourceDir}/Completions/DI Completions.xlsx, ${dicompletionsLocation}/di-completions-1.csv,  Sheet1, ${nameNode}]
+    next:
+      - action: create-tbl-di-completions
+
+-------------------------------------------------------------------------------------------
+java_action: ->
+  - action: ${java_action.value}
+    tags: [java]
+
+workflow:
+  - java_action: fetch-di-completions
+    clean-up: ${dicompletionsLocation}
+    properties: [{name: oozie.launcher.mapreduce.map.memory.mb, value: 1120 }]
+    main-class: cvx.cdf.base.pulse.XlsxToCsv
+    java-opts: -Xms1g -Xmx1g
+    args: [${sourceDir}/Completions/DI Completions.xlsx, ${dicompletionsLocation}/di-completions-1.csv,  Sheet1, ${nameNode}]
+    next:
+
+      - action: create-tbl-di-completions
+-------------------------------------------------------------------------------------------
+tags:
+  java-xls-to-csv:
+    tags: [java]
+    main-class: cvx.cdf.base.pulse.XlsxToCsv
+    properties: [{name: oozie.launcher.mapreduce.map.memory.mb, value: 1120 }]
+    java-opts:  -Xms1g -Xmx1g
+    args: [$source,$destination,$sheet,${nameNode}]
+
+workflow:
+  - java_action: fetch-di-completions
+    tag: [java-xls-to-csv]
+    clean-up: ${dicompletionsLocation}
+    source: ${sourceDir}/Completions/DI Completions.xlsx
+    destination: ${dicompletionsLocation}/di-completions-1.csv
+    sheet: Sheet1
+    next:
+      - action: create-tbl-di-completions
+
+-------------------------------------------------------------------------------------------
+xls-to-csv_action: ->
+  - action: ${xls-to-csv_action.value}
+    tags: [java-xls-to-csv]
+
+workflow:
+  - xls-to-csv_action: fetch-di-completions
+    clean-up: ${dicompletionsLocation}
+    source: ${sourceDir}/Completions/DI Completions.xlsx
+    destination: ${dicompletionsLocation}/di-completions-1.csv
+    sheet: Sheet1
+    next:
+      - action: create-tbl-di-completions
+
+************************************************************************************************************
+*MULTI*
+
+workflow:
+  - action: do-something
+    tags: [fork]
+    items:
+      - xls-to-csv_action: fetch-di-completions
+        clean-up: ${locationA}
+        source: ${sourceDir}/A/file_name.xlsx
+        destination: ${locationA}/file-name-1.csv
+        sheet: Sheet1
+      - xls-to-csv_action: fetch-di-completions
+        clean-up: ${locationB}
+        source: ${sourceDir}/B/file_name.xlsx
+        destination: ${locationB}/file-name-1.csv
+        sheet: Sheet1
+    next:
+      - action: create-tbl-di-completions
+
+-------------------------------------------------------------------------------------------
+
+
+fork_action: ->
+  - action: ${fork_action.value}
+    tags: [fork]
+
+fork: -> fork_action
+
+workflow:
+  - fork:
+      - xls-to-csv_action: fetch-di-completions
+        clean-up: ${locationA}
+        source: ${sourceDir}/A/file_name.xlsx
+        destination: ${locationA}/file-name-1.csv
+        sheet: SheetB
+      - xls-to-csv_action: fetch-di-completions
+        clean-up: ${locationB}
+        source: ${sourceDir}/B/file_name.xlsx
+        destination: ${locationB}/file-name-1.csv
+        sheet: SheetB
+  - action: create-tbl-di-completions
+
+
+-------------------------------------------------------------------------------------------
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+DEPANDENCIES:

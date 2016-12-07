@@ -1,0 +1,578 @@
+<workflow-app xmlns="uri:oozie:workflow:0.5" name="${projectName}::${appName}">
+
+    <global>
+        <job-tracker>${jobTracker}</job-tracker>
+        <name-node>${nameNode}</name-node>
+        <configuration>
+            <property>
+                <name>mapred.job.queue.name</name>
+                <value>${queueName}</value>
+            </property>
+            <property>
+                <name>hadoop.security.credential.provider.path</name>
+                <value>jceks://file/home/${USER}/conf/passwords.jceks</value>
+            </property>
+        </configuration>
+    </global>
+
+    <credentials>
+        <credential name="hive" type="hcat">
+            <property>
+                <name>hcat.metastore.uri</name>
+                <value>${hiveMetastoreUris}</value>
+            </property>
+            <property>
+                <name>hcat.metastore.principal</name>
+                <value>${hiveMetastorePrincipal}</value>
+            </property>
+        </credential>
+    </credentials>
+
+    <start to="fork-fetchers"/>
+
+    <fork name="fork-fetchers">
+        <path start="fetch-di-completions"/>
+        <path start="fetch-fracfocus-completions"/>
+        <path start="fetch-mcbu-completions"/>
+        <path start="fetch-sme-completions"/>
+        <path start="fetch-ihsiptest-completions"/>
+        <path start="fetch-treatment-summary"/>
+        <path start="fetch-test-perforation"/>
+        <path start="fetch-ihs-completions"/>
+    </fork>
+
+    <join name="join-fetchers" to="report-success"/>
+
+    <action name="fetch-di-completions">
+        <java>
+            <prepare>
+                <delete path="${dicompletionsLocation}"/>
+                <mkdir path="${dicompletionsLocation}"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>1120</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms1g -Xmx1g</java-opts>
+            <arg>${sourceDir}/Completions/DI Completions.xlsx</arg>
+            <arg>${dicompletionsLocation}/di-completions-1.csv</arg>
+            <arg>Sheet1</arg>
+            <arg>${nameNode}</arg>
+        </java>
+
+        <ok to="create-tbl-di-completions"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-di-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-di-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${dicompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-fracfocus-completions">
+        <java>
+            <prepare>
+                <delete path="${fracfocusCompletionsLocation}"/>
+                <mkdir path="${fracfocusCompletionsLocation}"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>1120</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms1g -Xmx1g</java-opts>
+            <arg>${sourceDir}/Completions/Frac Focus Attributes with API14 6-21.xlsx</arg>
+            <arg>${fracfocusCompletionsLocation}/fracfocus-completions-1.csv</arg>
+            <arg>Sheet2</arg>
+            <arg>${nameNode}</arg>
+        </java>
+
+        <ok to="create-tbl-fracfocus-completions"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-fracfocus-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-fracfocus-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${fracfocusCompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-mcbu-completions">
+        <shell xmlns="uri:oozie:shell-action:0.3">
+            <prepare>
+                <delete path="${mcbuCompletionsLocation}"/>
+                <mkdir path="${mcbuCompletionsLocation}"/>
+            </prepare>
+            <exec>hdfs</exec>
+            <argument>dfs</argument>
+            <argument>-put</argument>
+            <argument>${completionsSourceDir}/mcbu_completions_data.csv</argument>
+            <argument>${mcbuCompletionsLocation}</argument>
+        </shell>
+        <ok to="create-tbl-mcbu-completions"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-mcbu-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-mcbu-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${mcbuCompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-sme-completions">
+        <shell xmlns="uri:oozie:shell-action:0.3">
+            <prepare>
+                <delete path="${smeCompletionsLocation}"/>
+                <mkdir path="${smeCompletionsLocation}"/>
+            </prepare>
+            <exec>hdfs</exec>
+            <argument>dfs</argument>
+            <argument>-put</argument>
+            <argument>${completionsSourceDir}/sme_completions.csv</argument>
+            <argument>${smeCompletionsLocation}</argument>
+        </shell>
+        <ok to="create-tbl-sme-completions"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-sme-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-sme-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${smeCompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-ihsiptest-completions">
+        <fs>
+            <delete path="${ihsiptestCompletionsLocation}"/>
+            <mkdir path="${ihsiptestCompletionsLocation}"/>
+        </fs>
+        <ok to="fork-ihsiptest-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <fork name="fork-ihsiptest-fetchers">
+        <path start="fetch-ihsiptest-completions-1"/>
+        <path start="fetch-ihsiptest-completions-2"/>
+        <path start="fetch-ihsiptest-completions-3"/>
+    </fork>
+
+    <join name="join-ihsiptest-fetchers" to="create-tbl-ihsiptest-completions"/>
+
+    <action name="fetch-ihsiptest-completions-1">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_1.xlsx</arg>
+            <arg>${ihsiptestCompletionsLocation}/ihsiptest-completions-1.csv</arg>
+            <arg>Test</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-ihsiptest-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-ihsiptest-completions-2">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_2.xlsx</arg>
+            <arg>${ihsiptestCompletionsLocation}/ihsiptest-completions-2.csv</arg>
+            <arg>Test</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-ihsiptest-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-ihsiptest-completions-3">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_3.xlsx</arg>
+            <arg>${ihsiptestCompletionsLocation}/ihsiptest-completions-3.csv</arg>
+            <arg>Test</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-ihsiptest-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-ihsiptest-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-ihsiptest-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${ihsiptestCompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-treatment-summary">
+        <fs>
+            <delete path="${ihsCompletionsTreatmentSummaryLocation}"/>
+            <mkdir path="${ihsCompletionsTreatmentSummaryLocation}"/>
+        </fs>
+        <ok to="fork-treatment-summary-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <fork name="fork-treatment-summary-fetchers">
+        <path start="fetch-treatment-summary-1"/>
+        <path start="fetch-treatment-summary-2"/>
+        <path start="fetch-treatment-summary-3"/>
+    </fork>
+
+    <join name="join-treatment-summary-fetchers" to="create-tbl-treatment-summary"/>
+
+    <action name="fetch-treatment-summary-1">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_1.xlsx</arg>
+            <arg>${ihsCompletionsTreatmentSummaryLocation}/treatment-summary-1.csv</arg>
+            <arg>Treatment Summary</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-treatment-summary-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-treatment-summary-2">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_2.xlsx</arg>
+            <arg>${ihsCompletionsTreatmentSummaryLocation}/treatment-summary-2.csv</arg>
+            <arg>Treatment Summary</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-treatment-summary-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-treatment-summary-3">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_3.xlsx</arg>
+            <arg>${ihsCompletionsTreatmentSummaryLocation}/treatment-summary-3.csv</arg>
+            <arg>Treatment Summary</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-treatment-summary-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-treatment-summary" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-treatment-summary-ihscompletions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${ihsCompletionsTreatmentSummaryLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-test-perforation">
+        <fs>
+            <delete path="${ihsCompletionsTestPerforationLocation}"/>
+            <mkdir path="${ihsCompletionsTestPerforationLocation}"/>
+        </fs>
+        <ok to="fork-test-perforation-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <fork name="fork-test-perforation-fetchers">
+        <path start="fetch-test-perforation-1"/>
+        <path start="fetch-test-perforation-2"/>
+        <path start="fetch-test-perforation-3"/>
+    </fork>
+
+    <join name="join-test-perforation-fetchers" to="create-tbl-test-perforation"/>
+
+    <action name="fetch-test-perforation-1">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_1.xlsx</arg>
+            <arg>${ihsCompletionsTestPerforationLocation}/test-perforation-1.csv</arg>
+            <arg>Test Perforation</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-test-perforation-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-test-perforation-2">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_2.xlsx</arg>
+            <arg>${ihsCompletionsTestPerforationLocation}/test-perforation-2.csv</arg>
+            <arg>Test Perforation</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-test-perforation-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-test-perforation-3">
+        <java>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapreduce.map.memory.mb</name>
+                    <value>65536</value>
+                </property>
+            </configuration>
+            <main-class>cvx.cdf.base.pulse.XlsxToCsv</main-class>
+            <java-opts>-Xms63g -Xmx63g</java-opts>
+            <arg>${sourceDir}/IHS Well Files/Permian Well Data 6-11_3.xlsx</arg>
+            <arg>${ihsCompletionsTestPerforationLocation}/test-perforation-3.csv</arg>
+            <arg>Test Perforation</arg>
+            <arg>${nameNode}</arg>
+        </java>
+        <ok to="join-test-perforation-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-test-perforation" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-test-perforation-ihscompletions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${ihsCompletionsTestPerforationLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="fetch-ihs-completions">
+        <shell xmlns="uri:oozie:shell-action:0.3">
+            <prepare>
+                <delete path="${ihsCompletionsLocation}"/>
+                <mkdir path="${ihsCompletionsLocation}"/>
+            </prepare>
+            <exec>hdfs</exec>
+            <argument>dfs</argument>
+            <argument>-put</argument>
+            <argument>${completionsSourceDir}/ihs-completions.csv</argument>
+            <argument>${ihsCompletionsLocation}</argument>
+        </shell>
+        <ok to="create-tbl-ihs-completions"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="create-tbl-ihs-completions" cred="hive">
+        <hive xmlns="uri:oozie:hive-action:0.4">
+            <job-xml>${applicationDir}/conf/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>hive</value>
+                </property>
+            </configuration>
+            <script>${hiveScriptDir}/create-table-ihs-completions.hql</script>
+            <param>RAW_DATABASE_NAME=${hiveRawDatabaseName}</param>
+            <param>TABLE_SOURCE_LOCATION=${ihsCompletionsLocation}</param>
+        </hive>
+        <ok to="join-fetchers"/>
+        <error to="report-failure"/>
+    </action>
+
+    <action name="report-success">
+        <sub-workflow>
+            <app-path>${commonDir}/app/reporter</app-path>
+            <propagate-configuration/>
+            <configuration>
+                <property>
+                    <name>rcpt</name>
+                    <value>${reportRecipient}</value>
+                </property>
+                <property>
+                    <name>wfname</name>
+                    <value>${wf:name()}</value>
+                </property>
+                <property>
+                    <name>wfid</name>
+                    <value>${wf:id()}</value>
+                </property>
+                <property>
+                    <name>wfuser</name>
+                    <value>${wf:user()}</value>
+                </property>
+                <property>
+                    <name>wflastErrorNode</name>
+                    <value>false</value>
+                </property>
+                <property>
+                    <name>wferrorMessage</name>
+                    <value>false</value>
+                </property>
+            </configuration>
+        </sub-workflow>
+
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="report-failure">
+        <sub-workflow>
+            <app-path>${commonDir}/app/reporter</app-path>
+            <propagate-configuration/>
+            <configuration>
+                <property>
+                    <name>rcpt</name>
+                    <value>${reportRecipient}</value>
+                </property>
+                <property>
+                    <name>wfname</name>
+                    <value>${wf:name()}</value>
+                </property>
+                <property>
+                    <name>wfid</name>
+                    <value>${wf:id()}</value>
+                </property>
+                <property>
+                    <name>wfuser</name>
+                    <value>${wf:user()}</value>
+                </property>
+                <property>
+                    <name>wflastErrorNode</name>
+                    <value>${firstNotNull(wf:lastErrorNode(), "false")}</value>
+                </property>
+                <property>
+                    <name>wferrorMessage</name>
+                    <value>${firstNotNull(wf:errorMessage(wf:lastErrorNode()), "false")}</value>
+                </property>
+            </configuration>
+        </sub-workflow>
+
+        <ok to="fail"/>
+        <error to="fail"/>
+    </action>
+
+    <kill name="fail">
+        <message>Error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+
+    <end name="end"/>
+
+</workflow-app>

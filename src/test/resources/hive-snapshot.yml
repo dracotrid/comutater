@@ -1,0 +1,163 @@
+action:
+  action_attr_name: create-tbl-di-completions
+  action_attr_cred: hive
+  hive:
+    hive_attr_xmlns: uri:oozie:hive-action:0.4
+    job-xml: ${applicationDir}/conf/hive-site.xml
+    configuration:
+      property:
+      - name: mapred.job.queue.name
+        value: hive
+      - name: mapred.job.queue.name2
+        value: hive2
+    script: ${hiveScriptDir}/create-table-di-completions.hql
+    param: [RAW_DATABASE_NAME=${hiveRawDatabaseName}, TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+  ok: join-fetchers
+  error: report-failure
+
+-----------------------------------------------------------------------
+tag:
+  dot-simplificator:
+    engine: java-plugin
+    name: com.ddff.CommonSimplificator
+    params: [.]
+    PROPERTIES DOT-SIMPLIFICATION PROCESSOR
+
+action:
+  tags: [dot-simplificator]
+  action_attr_name:  create-tbl-di-completions
+  action_attr_cred:  hive
+  hive:
+    hive_attr_xmlns: uri:oozie:hive-action:0.4
+    job-xml: ${applicationDir}/conf/hive-site.xml
+    configuration.property: [{name: mapred.job.queue.name, value: hive}]
+    script: ${hiveScriptDir}/create-table-di-completions.hql
+    param:
+     - RAW_DATABASE_NAME=${hiveRawDatabaseName}
+     - TABLE_SOURCE_LOCATION=${dicompletionsLocation}
+  ok: join-fetchers
+  error: report-failure
+
+-----------------------------------------------------------------------
+
+tags:
+  oozie-action:
+    action: value ->
+      action:
+        action_attr_name: $action.value
+        action_attr_*: $xml.attr.*.value
+        ok: $next.value
+        error: $default.error.processor
+
+action: create-tbl-di-completions
+tags: [oozie-action, dot-simplificator]
+xml.attr:
+  - cred:  hive
+hive:
+  xml.attr:
+    xmlns: uri:oozie:hive-action:0.4
+  job-xml: ${applicationDir}/conf/hive-site.xml
+  configuration.property: [{name: mapred.job.queue.name, value: hive}]
+  script: ${hiveScriptDir}/create-table-di-completions.hql
+  param:
+   - RAW_DATABASE_NAME=${hiveRawDatabaseName}
+   - TABLE_SOURCE_LOCATION=${dicompletionsLocation}
+next: join-fetchers
+
+-----------------------------------------------------------------------
+
+tags:
+  hive:
+    action: value ->
+    action: $action.value
+    tags: [oozie-action]
+    action.attr.cred:  hive
+    hive:
+      hive.attr.xmlns: uri:oozie:hive-action:0.4
+      job-xml: ${configurationDir}/hive-site.xml
+      configuration.property: [{name: mapred.job.queue.name, value: hive}]
+      script: ${hiveScriptDir}/$script
+      param: <- [params]
+
+action: create-tbl-di-completions
+tags: [hive]
+script: create-table-di-completions.hql
+params: [RAW_DATABASE_NAME=${hiveRawDatabaseName}, TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+next: join-fetchers
+
+-----------------------------------------------------------------------
+context:
+  hive:
+    params:
+      - RAW_DATABASE_NAME=${hiveRawDatabaseName}
+
+action: create-tbl-di-completions
+tags: [hive]
+context: [hive]
+script: create-table-di-completions.hql
+params: [TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+next: join-fetchers
+
+-----------------------------------------------------------------------
+hive_action:
+  tags: [hive]
+  context: [hive]
+
+hive_action: create-tbl-di-completions
+script: create-table-di-completions.hql
+params: [TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+next: join-fetchers
+
+-----------------------------------------------------------------------
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+engines:
+  hql-file-generator:
+    plugin: class.path.ClassName
+    parameters: [$hql-script]
+    targetDir: ${buildPath_TargetDir}
+
+tags:
+  hql-file-generator: ->
+    tags: [hive]
+    script: hql-file-generator.engine -> $generated.file.name[create-tbl-di-completions].hql
+
+
+hive_action: create-tbl-di-completions
+tags: [hql-file-generator]
+hql-script: CREATE DATABASE IF NOT EXISTS ${RAW_DATABASE_NAME}; .... CREATE EXTERNAL TABLE DI_COMPLETIONS ....;
+params: [TABLE_SOURCE_LOCATION=${dicompletionsLocation}]
+next: join-fetchers
+
+-----------------------------------------------------------------------
+
+
+create_hive_table_action: ->
+  hive_action: $create_hive_table_action.value
+  tags: [hql-file-generator]
+  hql-script: $generated.hql.script
+  params: [TABLE_SOURCE_LOCATION=$sourceDataLocation]
+
+
+create_hive_table_action: create-tbl-di-completions
+tableType: EXTERNAL
+tableName: DI_COMPLETIONS
+fields:  [state, ..., total_fluid_bbls]
+fieldTypes: [STRING]
+sourceDataLocation: ${dicompletionsLocation}
+tableProperties:
+  - skip.header.line.count: 1
+next: join-fetchers
+
+
+
+
+
+
+
+
+
+
+
+
+
